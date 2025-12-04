@@ -57,15 +57,15 @@ class MalwareClassifier:
         return X, y
     
     def train_model(self, X_train, y_train):
-        """Train Random Forest classifier"""
+        """Train Random Forest classifier with Probability Calibration"""
         print("\n[*] Training Random Forest classifier...")
         
         # Scale features
         self.scaler = StandardScaler()
         X_train_scaled = self.scaler.fit_transform(X_train)
         
-        # Train model
-        self.model = RandomForestClassifier(
+        # Base Random Forest
+        rf = RandomForestClassifier(
             n_estimators=100,
             max_depth=20,
             min_samples_split=5,
@@ -75,9 +75,37 @@ class MalwareClassifier:
             verbose=0
         )
         
+        # Use CalibratedClassifierCV to fix the "100% confidence" issue
+        # This keeps the high accuracy but smooths the probabilities
+        # Using 'sigmoid' method which works better than 'isotonic' for our dataset size
+        from sklearn.calibration import CalibratedClassifierCV
+        self.model = CalibratedClassifierCV(rf, method='sigmoid', cv=3)
+        
         self.model.fit(X_train_scaled, y_train)
         
-        print(f"[✓] Model trained with {self.model.n_estimators} trees")
+        # Expose feature importances from the base estimator for explanation
+        # CalibratedClassifierCV wraps the base estimator, access via .estimator
+        try:
+            # Get feature importances from the base RF estimators
+            importances_list = []
+            for cal_clf in self.model.calibrated_classifiers_:
+                if hasattr(cal_clf, 'estimator') and hasattr(cal_clf.estimator, 'feature_importances_'):
+                    importances_list.append(cal_clf.estimator.feature_importances_)
+            
+            if importances_list:
+                self.model.feature_importances_ = np.mean(importances_list, axis=0)
+            else:
+                # Fallback: train a single RF to get importances
+                print("[!] Warning: Could not extract feature importances from calibrated model")
+                self.model.feature_importances_ = np.zeros(X_train_scaled.shape[1])
+        except Exception as e:
+            print(f"[!] Error extracting feature importances: {e}")
+            self.model.feature_importances_ = np.zeros(X_train_scaled.shape[1])
+        
+        # Add n_estimators for metadata compatibility
+        self.model.n_estimators = 100
+        
+        print(f"[✓] Calibrated Random Forest trained successfully")
         
         return X_train_scaled
     
@@ -131,6 +159,7 @@ class MalwareClassifier:
     
     def show_feature_importance(self, top_n=15):
         """Show most important features"""
+        # We manually attached feature_importances_ to the calibrated model
         importances = self.model.feature_importances_
         indices = np.argsort(importances)[::-1]
         
@@ -162,8 +191,8 @@ class MalwareClassifier:
                 'train_metrics': train_metrics,
                 'validation_metrics': val_metrics,
                 'test_metrics': test_metrics,
-                'model_type': 'RandomForestClassifier',
-                'n_estimators': self.model.n_estimators,
+                'model_type': 'CalibratedClassifierCV(RandomForestClassifier)',
+                'n_estimators': 100,
                 'split_ratio': {
                     'train': 0.70,
                     'validation': 0.15,
