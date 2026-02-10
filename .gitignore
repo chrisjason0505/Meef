@@ -3,14 +3,16 @@ venv/
 __pycache__/
 *.pyc
 
-# Samples and binaries
+# Samples and binaries (raw)
 samples/
 data/*.exe
 data/*.dll
 data/*.zip
 data/*.7z
 data/*.pt
-data/*.pkl
+
+# Keep model artifacts in data/models/
+# (do NOT ignore data/models/*.pkl)
 
 # Misc
 .ipynb_checkpoints/
