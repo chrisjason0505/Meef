@@ -1,8 +1,9 @@
-# 🛡️ MEEF – Malware Sentinel
+# 🛡️ MEEF Live App
 
 🔗 Live App: https://malwareanalysis22.streamlit.app/
 
 AI-powered malware detection using assembly code analysis.  
+Dataset  and ML engine extracted from https://github.com/srioo10/Meef
 Upload `.asm` or `.exe` files and get instant classification with confidence scoring.
 
 ---
@@ -56,3 +57,4 @@ Final Score =
 pip install -r requirements.txt
 python train_model.py  # optional
 streamlit run app.py
+
