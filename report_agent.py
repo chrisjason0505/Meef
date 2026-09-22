@@ -8,13 +8,23 @@ threat report using RAG + Gemini generation, with a guardrail.
 import os
 import json
 import re
+import time
 
 import requests
 
 from rag_engine import RagEngine
 
-GEN_MODEL = "models/gemini-3.1-flash-lite"
-GEN_URL = f"https://generativelanguage.googleapis.com/v1beta/{GEN_MODEL}:generateContent"
+GEN_MODELS = [
+    "models/gemini-3.1-flash-lite",
+    "models/gemini-3.5-flash-lite",
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.5-flash",
+    "models/gemini-2.5-pro",
+]
+
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES_PER_MODEL = 2
+BASE_DELAY_SECONDS = 1.5
 
 _engine = None
 
@@ -37,18 +47,52 @@ def _build_query(ml_probability: float, heuristic_flags: list[str]) -> str:
 
 
 def _call_gemini(prompt: str, api_key: str) -> str:
-    resp = requests.post(
-        GEN_URL,
-        headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.2},
-        },
-        timeout=60,
+    last_error = None
+
+    for model in GEN_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent"
+
+        for attempt in range(MAX_RETRIES_PER_MODEL):
+            try:
+                resp = requests.post(
+                    url,
+                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"temperature": 0.2},
+                    },
+                    timeout=60,
+                )
+                if resp.status_code in RETRYABLE_STATUS_CODES:
+                    last_error = requests.exceptions.HTTPError(
+                        f"{resp.status_code} from {model} (attempt {attempt + 1}/{MAX_RETRIES_PER_MODEL})",
+                        response=resp,
+                    )
+                    if attempt < MAX_RETRIES_PER_MODEL - 1:
+                        delay = BASE_DELAY_SECONDS * (2 ** attempt)
+                        print(f"[report_agent] {resp.status_code} from {model}, retrying in {delay:.1f}s ...")
+                        time.sleep(delay)
+                        continue
+                    print(f"[report_agent] {model} still failing after retries, falling back to next model ...")
+                    break
+
+                resp.raise_for_status()
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                if attempt < MAX_RETRIES_PER_MODEL - 1:
+                    delay = BASE_DELAY_SECONDS * (2 ** attempt)
+                    print(f"[report_agent] connection error, retrying in {delay:.1f}s ...")
+                    time.sleep(delay)
+                    continue
+                break
+
+    raise RuntimeError(
+        f"All models in GEN_MODELS ({', '.join(GEN_MODELS)}) failed after retries. "
+        f"Last error: {last_error}"
     )
-    resp.raise_for_status()
-    data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def _extract_json(text: str) -> dict:
