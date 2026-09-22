@@ -1,0 +1,86 @@
+[
+  {
+    "id": "kb-01",
+    "title": "Process Injection (T1055)",
+    "category": "process_injection",
+    "mitre_id": "T1055",
+    "text": "Process injection is a defense-evasion and privilege-escalation technique where adversary code runs in the address space of another, legitimate process. Common Windows API sequences include OpenProcess, VirtualAllocEx, WriteProcessMemory, and CreateRemoteThread. It is favored because monitoring tools that whitelist trusted processes will see the injected code running under that trusted process's identity, hiding malicious activity from simple process-list inspection."
+  },
+  {
+    "id": "kb-02",
+    "title": "DLL Injection variant of Process Injection (T1055.001)",
+    "category": "process_injection",
+    "mitre_id": "T1055.001",
+    "text": "DLL injection is a sub-technique of process injection where malware forces a target process to load a malicious dynamic-link library, typically via SetWindowsHookEx or by writing a DLL path into a remote process and starting a remote thread pointed at LoadLibrary. It is commonly used by banking trojans to intercept browser traffic."
+  },
+  {
+    "id": "kb-03",
+    "title": "Command and Control network activity (T1071)",
+    "category": "network_activity",
+    "mitre_id": "T1071",
+    "text": "Malware frequently establishes command-and-control (C2) channels using standard application-layer protocols such as HTTP/HTTPS to blend in with normal traffic. API calls like InternetOpen, InternetConnect, HttpSendRequest, send, and recv are typical indicators. Beaconing behavior -- periodic outbound connections to a small set of remote hosts -- is a strong signal of an active C2 channel rather than benign networking."
+  },
+  {
+    "id": "kb-04",
+    "title": "Exfiltration Over C2 Channel (T1041)",
+    "category": "network_activity",
+    "mitre_id": "T1041",
+    "text": "Once a foothold is established, many malware families exfiltrate collected data (credentials, documents, screenshots) back over the same channel used for command and control, rather than opening a separate exfiltration channel. This is efficient for the attacker but means heavy outbound data transfer volume on an already-suspicious C2 connection is a strong secondary indicator."
+  },
+  {
+    "id": "kb-05",
+    "title": "Data Encrypted for Impact / Ransomware (T1486)",
+    "category": "crypto_usage",
+    "mitre_id": "T1486",
+    "text": "Ransomware encrypts files on the victim's system using symmetric algorithms (commonly AES) combined with an asymmetric key (RSA) to protect the AES key, so files cannot be recovered without the attacker-held private key. API usage of CryptEncrypt, CryptGenKey, or bundled crypto libraries alongside mass file I/O operations across user directories is a strong signature of ransomware behavior specifically, as opposed to legitimate encryption use (e.g., a password manager or VPN client)."
+  },
+  {
+    "id": "kb-06",
+    "title": "Obfuscated Files or Information via encryption (T1027)",
+    "category": "crypto_usage",
+    "mitre_id": "T1027",
+    "text": "Malware authors use encryption or encoding (via CryptDecrypt, XOR routines, or custom packers) not just for impact but to hide their own payload from static analysis. A sample calling decryption routines against its own embedded resources before executing them is a classic packer/obfuscation pattern, distinct from ransomware's use of encryption against victim files."
+  },
+  {
+    "id": "kb-07",
+    "title": "Persistence via Registry Run Keys (T1547.001)",
+    "category": "persistence",
+    "mitre_id": "T1547.001",
+    "text": "Adding an entry to a Windows registry Run or RunOnce key (via RegSetValueEx, RegCreateKeyEx) causes a program to auto-start on user login. This is one of the simplest and most common persistence mechanisms and is frequently paired with process injection so the persistent payload runs invisibly inside a trusted host process."
+  },
+  {
+    "id": "kb-08",
+    "title": "Persistence via Windows Service creation (T1543.003)",
+    "category": "persistence",
+    "mitre_id": "T1543.003",
+    "text": "Malware may create a new Windows service (via CreateService, StartService) configured to auto-start, giving it SYSTEM-level persistence that survives reboots and often outlives simple user-level cleanup attempts. This is common in more sophisticated trojans and worm droppers compared to the simpler registry run-key approach."
+  },
+  {
+    "id": "kb-09",
+    "title": "Ransomware family archetype",
+    "category": "malware_family",
+    "mitre_id": "T1486",
+    "text": "Ransomware samples typically combine: crypto API usage for file encryption (T1486), some persistence mechanism to survive reboot before the ransom note is displayed, and occasionally a C2 check-in to report infection and retrieve a victim-specific encryption key. The presence of crypto_usage together with persistence indicators, even without heavy network activity, should raise ransomware likelihood specifically."
+  },
+  {
+    "id": "kb-10",
+    "title": "Banking trojan / credential-stealer family archetype",
+    "category": "malware_family",
+    "mitre_id": "T1055.001",
+    "text": "Banking trojans and credential stealers typically show process/DLL injection into browser processes (to intercept form data), combined with steady low-volume C2 network activity for exfiltrating stolen credentials, and registry-based persistence. Unlike ransomware, crypto API usage here (if any) is for hiding the payload, not encrypting victim files."
+  },
+  {
+    "id": "kb-11",
+    "title": "Worm / self-propagating malware family archetype",
+    "category": "malware_family",
+    "mitre_id": "T1543.003",
+    "text": "Worms combine network activity used for propagation (scanning and infecting other reachable hosts, not just C2) with service-based persistence for durability, and often minimal-to-no encryption usage since their goal is spread and impact rather than data theft or ransom."
+  },
+  {
+    "id": "kb-12",
+    "title": "Benign software false-positive considerations",
+    "category": "false_positive",
+    "mitre_id": "N/A",
+    "text": "Legitimate software can trigger individual heuristic flags without being malicious: installers and auto-updaters legitimately use registry run keys and services for persistence; VPN clients, password managers, and backup software legitimately use strong encryption; enterprise remote-support tools legitimately use process injection-like techniques for screen sharing. A single flagged category alone is weak evidence; the combination and context of multiple flags together is what should drive confidence, and any AI-generated report should say so explicitly when only one category is present."
+  }
+]

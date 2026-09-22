@@ -14,6 +14,7 @@ regardless of file size.
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from pathlib import Path
@@ -21,6 +22,8 @@ from pathlib import Path
 import numpy as np
 import streamlit as st
 import joblib
+
+from report_agent import generate_report
 
 # -----------------------------------------------------------
 #  Paths
@@ -721,6 +724,82 @@ def main() -> None:
                 ],
             }
             st.dataframe(pd.DataFrame(stat_data), use_container_width=True, hide_index=True)
+
+        # ------------------------------------------------------------------
+        # AI Threat Report (RAG-grounded)
+        # Retrieves reference material (MITRE technique descriptions, malware
+        # family archetypes) matching the behavioral flags this specific file
+        # tripped, then drafts a structured explanation grounded in that
+        # material. A guardrail pass strips any technique the model cites
+        # that wasn't actually retrieved -- see report_agent.py.
+        # ------------------------------------------------------------------
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<p class='section-label'>AI Threat Report</p>", unsafe_allow_html=True)
+
+        _flag_map = {
+            "injection_apis": "process_injection",
+            "network_apis": "network_activity",
+            "crypto_apis": "crypto_usage",
+            "persistence_apis": "persistence",
+        }
+        heuristic_flags = [v for k, v in _flag_map.items() if k in threat_details]
+
+        if st.button("Generate AI Threat Report", key="ai_report_btn"):
+            if not os.environ.get("GEMINI_API_KEY"):
+                st.error(
+                    "GEMINI_API_KEY is not set. Export it in the environment "
+                    "Streamlit is running in, then restart the app."
+                )
+            else:
+                report = None
+                with st.spinner("Retrieving context and drafting report..."):
+                    try:
+                        report = generate_report(
+                            ml_probability=float(ml_proba[1]),
+                            heuristic_flags=heuristic_flags,
+                            filename=file_name,
+                        )
+                    except Exception as e:
+                        st.error(f"Report generation failed: {e}")
+
+                if report:
+                    risk_color = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(
+                        report["risk_level"], "⚪"
+                    )
+                    st.markdown(f"**Risk level:** {risk_color} {report['risk_level'].upper()}")
+                    st.write(report["summary"])
+
+                    if report["supporting_techniques"]:
+                        st.markdown(
+                            "**Supporting techniques (grounded in retrieved reference material):**"
+                        )
+                        for t in report["supporting_techniques"]:
+                            st.markdown(f"- `{t['mitre_id']}` **{t['name']}** — {t['evidence']}")
+                    else:
+                        st.info(
+                            "No specific techniques could be grounded in the reference "
+                            "material for this result."
+                        )
+
+                    if report.get("caveats"):
+                        st.caption(f"⚠️ {report['caveats']}")
+
+                    with st.expander("Show retrieval + guardrail details"):
+                        st.write("Retrieved sources used as grounding context:")
+                        for s in report["retrieved_sources"]:
+                            st.write(f"- [{s['score']}] `{s['mitre_id']}` {s['title']}")
+                        gr = report["guardrail"]
+                        if gr["status"] == "clean":
+                            st.success(
+                                "Guardrail: all cited techniques were verified against "
+                                "retrieved context."
+                            )
+                        else:
+                            st.warning(
+                                f"Guardrail: removed {gr['unverified_claims_removed']} "
+                                f"unverified claim(s) the model cited without supporting "
+                                f"retrieved context."
+                            )
 
     elif uploaded is None and model_ready:
         st.markdown(
