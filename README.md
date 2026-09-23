@@ -1,4 +1,4 @@
-# 🛡️ MEEF — Malware Explanation & Evaluation Framework
+#  MEEF — Malware Explanation & Evaluation Framework
 
 **Live app:** [malwareanalysis22.streamlit.app](https://malwareanalysis22.streamlit.app/)
 
@@ -168,12 +168,9 @@ The live app redeploys automatically on every push to the connected branch. The 
 
 ---
 
-## Honest scope, and what production would actually need
-
-This is a working demonstration of the RAG + guardrail pattern, not a production security tool, and I'd rather say that outright than have it look like an oversight. For production, the next steps would be: swap the in-memory cosine search for a proper vector database once the knowledge base grows past a few hundred entries; add real latency/cost tracing (OpenTelemetry) per request rather than eyeballing it; build an actual eval set to measure groundedness quantitatively instead of spot-checking outputs; and consider splitting the single generation+validation step into separate agents (a dedicated adversarial "critic" pass) if the guardrail's simple ID-membership check ever needs to catch subtler hallucinations than a wrong technique ID.
 
 ---
 
 ## Credits
 
-Dataset and base ML engine adapted from [srioo10/Meef](https://github.com/srioo10/Meef). RAG threat-report layer, guardrail, and Streamlit integration built on top of that base.
+@sriroo
