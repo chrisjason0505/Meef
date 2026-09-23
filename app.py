@@ -24,6 +24,32 @@ import streamlit as st
 import joblib
 
 from report_agent import generate_report
+from observability import get_recent_spans
+
+# -----------------------------------------------------------
+#  Bridge Streamlit Cloud secrets -> environment variable.
+#  Locally you `export`/`$env:` GEMINI_API_KEY yourself; on Streamlit
+#  Community Cloud, secrets are only exposed via st.secrets, so we copy
+#  it into os.environ here if present, since report_agent.py / rag_engine.py
+#  just read os.environ and don't need to know which environment they're in.
+# -----------------------------------------------------------
+if "GEMINI_API_KEY" not in os.environ:
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass  # no secrets.toml locally -- that's expected, env var already covers local runs
+
+# GROQ_API_KEY is optional -- it's only the cross-provider fallback used when every
+# Gemini model in GEN_MODELS fails (e.g. during Google's US-peak-hour capacity crunch).
+# Same secrets-bridge pattern as above; app works fine without it, just without that
+# extra fallback tier.
+if "GROQ_API_KEY" not in os.environ:
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass
 
 # -----------------------------------------------------------
 #  Paths
@@ -760,7 +786,21 @@ def main() -> None:
                             filename=file_name,
                         )
                     except Exception as e:
-                        st.error(f"Report generation failed: {e}")
+                        # "All models in GEN_MODELS ... failed" means every model in
+                        # the fallback chain hit a transient error (usually 503 --
+                        # the LLM provider is under high demand, a known issue on
+                        # their side, not a bug here). Show that calmly instead of
+                        # a scary raw traceback-looking message.
+                        if "All models in GEN_MODELS" in str(e):
+                            st.warning(
+                                "⚠️ AI Threat Report is temporarily unavailable — the LLM "
+                                "provider is experiencing high demand right now. This is a "
+                                "known, provider-side capacity issue (not a bug in this app); "
+                                "the classification result above is unaffected. Try again in "
+                                "a few minutes."
+                            )
+                        else:
+                            st.error(f"Report generation failed: {e}")
 
                 if report:
                     risk_color = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(
@@ -799,6 +839,36 @@ def main() -> None:
                                 f"Guardrail: removed {gr['unverified_claims_removed']} "
                                 f"unverified claim(s) the model cited without supporting "
                                 f"retrieved context."
+                            )
+
+                    with st.expander("Show trace (OpenTelemetry spans)"):
+                        spans = get_recent_spans()
+                        if not spans:
+                            st.caption("No spans recorded yet.")
+                        else:
+                            for s in spans[-12:]:
+                                status_icon = "✅" if s["status"] == "OK" else "❌"
+                                attrs = s["attributes"]
+                                bits = []
+                                if "provider" in attrs:
+                                    bits.append(f"provider={attrs['provider']}")
+                                if "model" in attrs:
+                                    bits.append(f"model={attrs['model']}")
+                                if "attempt" in attrs:
+                                    bits.append(f"attempt={attrs['attempt']}")
+                                if "status_code" in attrs:
+                                    bits.append(f"http={attrs['status_code']}")
+                                if "top_score" in attrs:
+                                    bits.append(f"top_score={attrs['top_score']}")
+                                detail = ", ".join(bits)
+                                dur = f"{s['duration_ms']}ms" if s["duration_ms"] is not None else "—"
+                                st.write(f"{status_icon} `{s['name']}` — {dur}" + (f" ({detail})" if detail else ""))
+                            st.caption(
+                                "Real OpenTelemetry spans emitted by the RAG pipeline — "
+                                "retrieval + every model attempt (including retries and "
+                                "provider fallback). Also streamed to the console/app logs "
+                                "via a ConsoleSpanExporter; swapping in an OTLP exporter "
+                                "for Jaeger/Grafana/Honeycomb is a one-line change."
                             )
 
     elif uploaded is None and model_ready:
