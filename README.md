@@ -1,4 +1,4 @@
-# 🛡️ MEEF — Malware Explanation & Evaluation Framework
+#  MEEF — Malware Explanation & Evaluation Framework
 
 **Live app:** [malwareanalysis22.streamlit.app](https://malwareanalysis22.streamlit.app/)
 
